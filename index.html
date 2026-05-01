@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>個人財經戰情室 - GitHub 穩定版</title>
+    <title>個人財經戰情室 - 整合版</title>
     <script src="https://cloudflare.com"></script>
     <style>
         :root { --bg: #0b0c10; --sidebar-bg: #1f2833; --active-blue: #66fcf1; --text: #fff; }
         body { font-family: "Microsoft JhengHei", sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; height: 100vh; overflow: hidden; }
         .sidebar { width: 250px; background: var(--sidebar-bg); padding: 20px 10px; border-right: 2px solid #45a29e; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
         .nav-btn { min-height: 50px; padding: 10px; background: #333; border: 1px solid #45a29e; color: #fff; border-radius: 4px; cursor: pointer; transition: 0.2s; font-size: 1rem; text-align: center; }
+        .nav-btn:hover { border-color: var(--active-blue); }
         .nav-btn.active { background-color: var(--active-blue) !important; color: #000 !important; font-weight: bold; }
         .content-area { flex: 1; position: relative; background: #131722; height: 100vh; }
         .view-pane { display: none; width: 100%; height: 100%; border: none; overflow: auto; }
@@ -25,14 +26,15 @@
 
 <div class="sidebar">
     <button class="nav-btn active" onclick="sw(this, 'us-pane')">美股熱力圖</button>
-    <button class="nav-btn" onclick="openTw('https://nstock.tw')">台股上市熱力圖 ↗</button>
-    <button class="nav-btn" onclick="openTw('https://nstock.tw')">台股上櫃熱力圖 ↗</button>
+    <!-- 已改回右側 iframe 顯示 -->
+    <button class="nav-btn" onclick="sw(this, 'ifr-pane', 'https://nstock.tw')">台股上市熱力圖</button>
+    <button class="nav-btn" onclick="sw(this, 'ifr-pane', 'https://nstock.tw')">台股上櫃熱力圖</button>
     <button class="nav-btn" onclick="sw(this, 'csv-pane')">選股專區 5-10-20</button>
     <button class="nav-btn" onclick="sw(this, 'ifr-pane', '紀律.pdf')">持股分析進出紀律</button>
 </div>
 
 <div class="content-area">
-    <!-- 美股區域：修正為官方小工具語法 -->
+    <!-- 美股區域：使用官方小工具避開阻擋 -->
     <div id="us-pane" class="view-pane active">
         <div class="tradingview-widget-container" style="height: 100%; width: 100%;">
             <div class="tradingview-widget-container__widget" style="height: 100%; width: 100%;"></div>
@@ -42,12 +44,7 @@
               "blockSize": "market_cap",
               "blockColor": "change",
               "locale": "zh_TW",
-              "symbolUrl": "",
               "colorTheme": "dark",
-              "hasTopBar": false,
-              "isDataSetEnabled": false,
-              "isZoomEnabled": true,
-              "hasSymbolTooltip": true,
               "width": "100%",
               "height": "100%"
             }
@@ -55,10 +52,10 @@
         </div>
     </div>
 
-    <!-- 通用顯示區 -->
+    <!-- 通用 iframe 區域 (台股與 PDF) -->
     <iframe id="ifr-pane" class="view-pane" src=""></iframe>
 
-    <!-- CSV 專區 -->
+    <!-- 選股 CSV 專區 -->
     <div id="csv-pane" class="view-pane text-content">
         <div id="csv-status" style="font-weight:bold; color:green; margin-bottom:10px;">準備載入中...</div>
         <div id="csv-display" style="overflow-x: auto;"></div>
@@ -71,15 +68,12 @@
         btn.classList.add('active');
         document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('active'));
         document.getElementById(paneId).classList.add('active');
+        
         if (paneId === 'ifr-pane') {
             document.getElementById('ifr-pane').src = url;
         } else if (paneId === 'csv-pane') {
             autoLoadCSV();
         }
-    }
-
-    function openTw(url) {
-        window.open(url, '_blank');
     }
 
     async function autoLoadCSV() {
