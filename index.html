@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>個人財經戰情室 - GitHub 修正版</title>
+    <title>個人財經戰情室 - 究極穩定版</title>
+    <!-- 使用穩定 CDN -->
     <script src="https://cloudflare.com"></script>
     <style>
         :root { --bg: #0b0c10; --sidebar-bg: #1f2833; --active-blue: #66fcf1; --text: #fff; }
@@ -15,24 +16,24 @@
         .view-pane { display: none; width: 100%; height: 100%; border: none; overflow: auto; }
         .view-pane.active { display: block; }
         .text-content { padding: 20px; color: #333; background: #f4f4f4; height: 100%; box-sizing: border-box; }
-        .stock-table { width: 100%; border-collapse: collapse; background: white; color: #000; }
-        .stock-table th, .stock-table td { border: 1px solid #aaa; padding: 8px; text-align: center; }
+        .stock-table { width: 100%; border-collapse: collapse; background: white; color: #000; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .stock-table th, .stock-table td { border: 1px solid #aaa; padding: 10px; text-align: center; white-space: nowrap; }
         .stock-table th { background-color: #444; color: #fff; position: sticky; top: 0; }
+        .stock-table tr:nth-child(even) { background-color: #f9f9f9; }
     </style>
 </head>
 <body>
 
 <div class="sidebar">
     <button class="nav-btn active" onclick="sw(this, 'us-pane')">美股熱力圖</button>
-    <!-- 使用您提供的精確網址 -->
-    <button class="nav-btn" onclick="sw(this, 'ifr-pane', 'https://nstock.tw/market_index/heatmap?t1=0&t2=0&t3=0&t4=1&t5=0&iid&nh=0')">台股上市熱力圖</button>
-    <button class="nav-btn" onclick="sw(this, 'ifr-pane', 'https://nstock.tw/market_index/heatmap?t1=1&t2=0&t3=0&t4=1&t5=0&iid&nh=0')">台股上櫃熱力圖</button>
+    <button class="nav-btn" onclick="sw(this, 'ifr-pane', 'https://nstock.tw')">台股上市熱力圖</button>
+    <button class="nav-btn" onclick="sw(this, 'ifr-pane', 'https://nstock.tw')">台股上櫃熱力圖</button>
     <button class="nav-btn" onclick="sw(this, 'csv-pane')">選股專區 5-10-20</button>
     <button class="nav-btn" onclick="sw(this, 'ifr-pane', '紀律.pdf')">持股分析進出紀律</button>
 </div>
 
 <div class="content-area">
-    <!-- 美股區域：Widget 模式 -->
+    <!-- 美股區域：修正為官方小工具，絕對不會哭臉 -->
     <div id="us-pane" class="view-pane active">
         <div class="tradingview-widget-container" style="height: 100%; width: 100%;">
             <div class="tradingview-widget-container__widget" style="height: 100%; width: 100%;"></div>
@@ -42,11 +43,17 @@
         </div>
     </div>
 
-    <!-- 關鍵：加上 referrerpolicy 嘗試避開 Nstock 的來源檢查 -->
+    <!-- 通用 iframe 區域，加入 referrerpolicy 避開部分阻擋 -->
     <iframe id="ifr-pane" class="view-pane" src="" referrerpolicy="no-referrer"></iframe>
 
+    <!-- 選股 CSV 專區 -->
     <div id="csv-pane" class="view-pane text-content">
-        <div id="csv-status" style="font-weight:bold; color:green; margin-bottom:10px;">等待載入...</div>
+        <div style="background:#ddd; padding:10px; border-radius:5px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+            <div id="csv-status" style="font-weight:bold;">等待讀取 stock.csv...</div>
+            <div>
+                手動上傳備案：<input type="file" id="file-manual" accept=".csv" style="font-size:0.8rem;">
+            </div>
+        </div>
         <div id="csv-display" style="overflow-x: auto;"></div>
     </div>
 </div>
@@ -57,39 +64,57 @@
         btn.classList.add('active');
         document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('active'));
         document.getElementById(paneId).classList.add('active');
-        
         if (paneId === 'ifr-pane') {
-            const ifr = document.getElementById('ifr-pane');
-            ifr.src = "about:blank"; // 先清空防止跳轉
-            setTimeout(() => { ifr.src = url; }, 50);
+            document.getElementById('ifr-pane').src = url;
         } else if (paneId === 'csv-pane') {
             autoLoadCSV();
         }
     }
 
     async function autoLoadCSV() {
+        const status = document.getElementById('csv-status');
+        // 同時嘗試多種可能的檔名（解決 Windows 副檔名問題）
+        const files = ['stock.csv', 'stock.csv.csv', 'STOCK.CSV'];
+        for (let name of files) {
+            try {
+                const response = await fetch(name + '?t=' + Date.now());
+                if (response.ok) {
+                    const blob = await response.blob();
+                    processFile(blob, name);
+                    return;
+                }
+            } catch (e) {}
+        }
+        status.innerText = "❌ 找不到檔案。請確認 stock.csv 已上傳。";
+        status.style.color = "red";
+    }
+
+    function processFile(blob, filename) {
         const display = document.getElementById('csv-display');
         const status = document.getElementById('csv-status');
-        try {
-            const response = await fetch('stock.csv?t=' + Date.now());
-            if (response.ok) {
-                const blob = await response.blob();
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const lines = e.target.result.split(/\r?\n/).filter(l => l.trim() !== "");
-                    let html = '<table class="stock-table">';
-                    lines.forEach((line, i) => {
-                        const cols = line.split(',');
-                        html += '<tr>' + cols.map(c => i===0 ? `<th>${c}</th>` : `<td>${c}</td>`).join('') + '</tr>';
-                    });
-                    html += '</table>';
-                    display.innerHTML = html;
-                    status.innerText = "✅ 成功載入 stock.csv";
-                };
-                reader.readAsText(blob, 'Big5');
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const content = e.target.result;
+            if (content.includes(',') || content.includes('\n')) {
+                const lines = content.split(/\r?\n/).filter(l => l.trim() !== "");
+                let html = '<table class="stock-table">';
+                lines.forEach((line, idx) => {
+                    const cols = line.split(',');
+                    html += '<tr>' + cols.map(c => idx===0 ? `<th>${c}</th>` : `<td>${c}</td>`).join('') + '</tr>';
+                });
+                html += '</table>';
+                display.innerHTML = html;
+                status.innerText = "✅ 載入成功：" + filename;
+                status.style.color = "green";
             }
-        } catch (e) { status.innerText = "❌ 找不到 CSV。"; }
+        };
+        // 台灣 Excel CSV 強制使用 Big5 讀取文字
+        reader.readAsText(blob, 'Big5');
     }
+
+    document.getElementById('file-manual').addEventListener('change', function(e) {
+        if (this.files[0]) processFile(this.files[0], this.files[0].name);
+    });
 </script>
 
 </body>
