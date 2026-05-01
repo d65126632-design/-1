@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>個人財經戰情室 - 穩定版</title>
+    <title>個人財經戰情室 - GitHub 穩定版</title>
     <script src="https://cloudflare.com"></script>
     <style>
         :root { --bg: #0b0c10; --sidebar-bg: #1f2833; --active-blue: #66fcf1; --text: #fff; }
         body { font-family: "Microsoft JhengHei", sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; height: 100vh; overflow: hidden; }
         .sidebar { width: 250px; background: var(--sidebar-bg); padding: 20px 10px; border-right: 2px solid #45a29e; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
         .nav-btn { min-height: 50px; padding: 10px; background: #333; border: 1px solid #45a29e; color: #fff; border-radius: 4px; cursor: pointer; transition: 0.2s; font-size: 1rem; text-align: center; }
-        .nav-btn:hover { border-color: var(--active-blue); }
+        .nav-btn:hover { border-color: var(--active-blue); color: var(--active-blue); }
         .nav-btn.active { background-color: var(--active-blue) !important; color: #000 !important; font-weight: bold; }
         .content-area { flex: 1; position: relative; background: #131722; height: 100vh; }
         .view-pane { display: none; width: 100%; height: 100%; border: none; overflow: auto; }
@@ -27,23 +27,38 @@
 
 <div class="sidebar">
     <button class="nav-btn active" onclick="sw(this, 'us-pane')">美股熱力圖</button>
-    <!-- 上市熱力圖 -->
-    <button class="nav-btn" onclick="sw(this, 'ifr-pane', 'https://nstock.tw')">台股上市熱力圖</button>
-    <!-- 上櫃熱力圖 -->
-    <button class="nav-btn" onclick="sw(this, 'ifr-pane', 'https://nstock.tw')">台股上櫃熱力圖</button>
+    <button class="nav-btn" onclick="openTw('https://nstock.tw')">台股上市熱力圖 ↗</button>
+    <button class="nav-btn" onclick="openTw('https://nstock.tw')">台股上櫃熱力圖 ↗</button>
     <button class="nav-btn" onclick="sw(this, 'csv-pane')">選股專區 5-10-20</button>
     <button class="nav-btn" onclick="sw(this, 'ifr-pane', '紀律.pdf')">持股分析進出紀律</button>
 </div>
 
 <div class="content-area">
+    <!-- 美股區域：改用官方 Widget 避開 iframe 阻擋 -->
     <div id="us-pane" class="view-pane active">
-        <iframe src="https://tradingview.com" style="width:100%; height:100%; border:none;"></iframe>
+        <div class="tradingview-widget-container" style="height: 100%; width: 100%;">
+            <div class="tradingview-widget-container__widget" style="height: 100%; width: 100%;"></div>
+            <script type="text/javascript" src="https://tradingview.com" async>
+            {
+              "dataSource": "Spx500",
+              "blockSize": "market_cap",
+              "blockColor": "change",
+              "locale": "zh_TW",
+              "colorTheme": "dark",
+              "width": "100%",
+              "height": "100%"
+            }
+            </script>
+        </div>
     </div>
-    <!-- 核心顯示區域 -->
+
+    <!-- 通用 iframe (PDF等) -->
     <iframe id="ifr-pane" class="view-pane" src=""></iframe>
+
+    <!-- 選股 CSV 專區 -->
     <div id="csv-pane" class="view-pane text-content">
         <div class="csv-toolbar">
-            <div id="csv-status" style="font-weight:bold; color:#666;">等待讀取...</div>
+            <div id="csv-status" style="font-weight:bold; color:#666;">等待讀取 stock.csv...</div>
             <div style="color: #333; font-size: 0.9rem;">
                 手動更新：<input type="file" id="file-manual" accept=".csv">
             </div>
@@ -57,21 +72,23 @@
         document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('active'));
-        const targetPane = document.getElementById(paneId);
-        targetPane.classList.add('active');
-        
+        document.getElementById(paneId).classList.add('active');
         if (paneId === 'ifr-pane') {
-            // 強制重載 URL 以避開快取跳轉
-            targetPane.src = "about:blank"; 
-            setTimeout(() => { targetPane.src = url; }, 10);
+            document.getElementById('ifr-pane').src = url;
         } else if (paneId === 'csv-pane') {
             autoLoadCSV();
         }
     }
 
+    // 解決 Nstock 阻擋的唯一方案：新分頁開啟
+    function openTw(url) {
+        window.open(url, '_blank');
+    }
+
     async function autoLoadCSV() {
         const status = document.getElementById('csv-status');
-        const possibleNames = ['stock.csv', 'stock.csv.csv', 'STOCK.CSV'];
+        // 增加針對 GitHub 檔案路徑的檢查
+        const possibleNames = ['stock.csv', 'stock.csv.csv'];
         for (let name of possibleNames) {
             try {
                 const response = await fetch(name + '?t=' + Date.now());
@@ -80,9 +97,9 @@
                     processFile(blob, name);
                     return; 
                 }
-            } catch (e) {}
+            } catch (e) { console.error("抓取失敗:", name); }
         }
-        status.innerText = "❌ 找不到檔案。";
+        status.innerText = "❌ 找不到檔案。請確認 stock.csv 已上傳至 GitHub。";
     }
 
     function processFile(blob, filename) {
@@ -96,11 +113,7 @@
                 let html = '<table class="stock-table">';
                 lines.forEach((line, idx) => {
                     const cols = line.split(',');
-                    html += '<tr>';
-                    cols.forEach(col => {
-                        html += (idx === 0) ? `<th>${col}</th>` : `<td>${col}</td>`;
-                    });
-                    html += '</tr>';
+                    html += '<tr>' + cols.map(c => (idx === 0) ? `<th>${c}</th>` : `<td>${c}</td>`).join('') + '</tr>';
                 });
                 html += '</table>';
                 display.innerHTML = html;
