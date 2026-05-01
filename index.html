@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>個人財經戰情室 - 穩定版</title>
+    <script src="https://cloudflare.com"></script>
+    <style>
+        :root { --bg: #0b0c10; --sidebar-bg: #1f2833; --active-blue: #66fcf1; --text: #fff; }
+        body { font-family: "Microsoft JhengHei", sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        .sidebar { width: 250px; background: var(--sidebar-bg); padding: 20px 10px; border-right: 2px solid #45a29e; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
+        .nav-btn { min-height: 50px; padding: 10px; background: #333; border: 1px solid #45a29e; color: #fff; border-radius: 4px; cursor: pointer; transition: 0.2s; font-size: 1rem; text-align: center; }
+        .nav-btn:hover { border-color: var(--active-blue); }
+        .nav-btn.active { background-color: var(--active-blue) !important; color: #000 !important; font-weight: bold; }
+        .content-area { flex: 1; position: relative; background: #131722; height: 100vh; }
+        .view-pane { display: none; width: 100%; height: 100%; border: none; overflow: auto; }
+        .view-pane.active { display: block; }
+        .text-content { padding: 20px; color: #333; background: #f4f4f4; height: 100%; box-sizing: border-box; }
+        .csv-toolbar { background: #e0e0e0; padding: 12px; border-radius: 5px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #ccc; }
+        .stock-table { width: 100%; border-collapse: collapse; background: white; color: #000; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .stock-table th, .stock-table td { border: 1px solid #aaa; padding: 10px; text-align: center; white-space: nowrap; }
+        .stock-table th { background-color: #444; color: #fff; position: sticky; top: 0; }
+        .stock-table tr:nth-child(even) { background-color: #f9f9f9; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <button class="nav-btn active" onclick="sw(this, 'us-pane')">美股熱力圖</button>
+    <!-- 上市熱力圖 -->
+    <button class="nav-btn" onclick="sw(this, 'ifr-pane', 'https://nstock.tw')">台股上市熱力圖</button>
+    <!-- 上櫃熱力圖 -->
+    <button class="nav-btn" onclick="sw(this, 'ifr-pane', 'https://nstock.tw')">台股上櫃熱力圖</button>
+    <button class="nav-btn" onclick="sw(this, 'csv-pane')">選股專區 5-10-20</button>
+    <button class="nav-btn" onclick="sw(this, 'ifr-pane', '紀律.pdf')">持股分析進出紀律</button>
+</div>
+
+<div class="content-area">
+    <div id="us-pane" class="view-pane active">
+        <iframe src="https://tradingview.com" style="width:100%; height:100%; border:none;"></iframe>
+    </div>
+    <!-- 核心顯示區域 -->
+    <iframe id="ifr-pane" class="view-pane" src=""></iframe>
+    <div id="csv-pane" class="view-pane text-content">
+        <div class="csv-toolbar">
+            <div id="csv-status" style="font-weight:bold; color:#666;">等待讀取...</div>
+            <div style="color: #333; font-size: 0.9rem;">
+                手動更新：<input type="file" id="file-manual" accept=".csv">
+            </div>
+        </div>
+        <div id="csv-display" style="overflow-x: auto;"></div>
+    </div>
+</div>
+
+<script>
+    function sw(btn, paneId, url = "") {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('active'));
+        const targetPane = document.getElementById(paneId);
+        targetPane.classList.add('active');
+        
+        if (paneId === 'ifr-pane') {
+            // 強制重載 URL 以避開快取跳轉
+            targetPane.src = "about:blank"; 
+            setTimeout(() => { targetPane.src = url; }, 10);
+        } else if (paneId === 'csv-pane') {
+            autoLoadCSV();
+        }
+    }
+
+    async function autoLoadCSV() {
+        const status = document.getElementById('csv-status');
+        const possibleNames = ['stock.csv', 'stock.csv.csv', 'STOCK.CSV'];
+        for (let name of possibleNames) {
+            try {
+                const response = await fetch(name + '?t=' + Date.now());
+                if (response.ok) {
+                    const blob = await response.blob();
+                    processFile(blob, name);
+                    return; 
+                }
+            } catch (e) {}
+        }
+        status.innerText = "❌ 找不到檔案。";
+    }
+
+    function processFile(blob, filename) {
+        const status = document.getElementById('csv-status');
+        const display = document.getElementById('csv-display');
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const content = e.target.result;
+            if (content.includes(',') || content.includes('\n')) {
+                const lines = content.split(/\r?\n/).filter(line => line.trim() !== "");
+                let html = '<table class="stock-table">';
+                lines.forEach((line, idx) => {
+                    const cols = line.split(',');
+                    html += '<tr>';
+                    cols.forEach(col => {
+                        html += (idx === 0) ? `<th>${col}</th>` : `<td>${col}</td>`;
+                    });
+                    html += '</tr>';
+                });
+                html += '</table>';
+                display.innerHTML = html;
+                status.innerText = "✅ 成功載入：" + filename;
+                status.style.color = "green";
+            }
+        };
+        reader.readAsText(blob, 'Big5');
+    }
+
+    document.getElementById('file-manual').addEventListener('change', function(e) {
+        if (this.files && this.files[0]) processFile(this.files[0], this.files[0].name);
+    });
+</script>
+
+</body>
+</html>
