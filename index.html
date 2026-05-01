@@ -3,61 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>個人財經戰情室 - 整合版</title>
+    <title>個人財經戰情室 - GitHub 修正版</title>
     <script src="https://cloudflare.com"></script>
     <style>
         :root { --bg: #0b0c10; --sidebar-bg: #1f2833; --active-blue: #66fcf1; --text: #fff; }
         body { font-family: "Microsoft JhengHei", sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; height: 100vh; overflow: hidden; }
         .sidebar { width: 250px; background: var(--sidebar-bg); padding: 20px 10px; border-right: 2px solid #45a29e; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
         .nav-btn { min-height: 50px; padding: 10px; background: #333; border: 1px solid #45a29e; color: #fff; border-radius: 4px; cursor: pointer; transition: 0.2s; font-size: 1rem; text-align: center; }
-        .nav-btn:hover { border-color: var(--active-blue); }
         .nav-btn.active { background-color: var(--active-blue) !important; color: #000 !important; font-weight: bold; }
         .content-area { flex: 1; position: relative; background: #131722; height: 100vh; }
         .view-pane { display: none; width: 100%; height: 100%; border: none; overflow: auto; }
         .view-pane.active { display: block; }
         .text-content { padding: 20px; color: #333; background: #f4f4f4; height: 100%; box-sizing: border-box; }
-        .stock-table { width: 100%; border-collapse: collapse; background: white; color: #000; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .stock-table th, .stock-table td { border: 1px solid #aaa; padding: 10px; text-align: center; white-space: nowrap; }
+        .stock-table { width: 100%; border-collapse: collapse; background: white; color: #000; }
+        .stock-table th, .stock-table td { border: 1px solid #aaa; padding: 8px; text-align: center; }
         .stock-table th { background-color: #444; color: #fff; position: sticky; top: 0; }
-        .stock-table tr:nth-child(even) { background-color: #f9f9f9; }
     </style>
 </head>
 <body>
 
 <div class="sidebar">
     <button class="nav-btn active" onclick="sw(this, 'us-pane')">美股熱力圖</button>
-    <!-- 已改回右側 iframe 顯示 -->
-    <button class="nav-btn" onclick="sw(this, 'ifr-pane', 'https://nstock.tw')">台股上市熱力圖</button>
-    <button class="nav-btn" onclick="sw(this, 'ifr-pane', 'https://nstock.tw')">台股上櫃熱力圖</button>
+    <!-- 使用您提供的精確網址 -->
+    <button class="nav-btn" onclick="sw(this, 'ifr-pane', 'https://nstock.tw/market_index/heatmap?t1=0&t2=0&t3=0&t4=1&t5=0&iid&nh=0')">台股上市熱力圖</button>
+    <button class="nav-btn" onclick="sw(this, 'ifr-pane', 'https://nstock.tw/market_index/heatmap?t1=1&t2=0&t3=0&t4=1&t5=0&iid&nh=0')">台股上櫃熱力圖</button>
     <button class="nav-btn" onclick="sw(this, 'csv-pane')">選股專區 5-10-20</button>
     <button class="nav-btn" onclick="sw(this, 'ifr-pane', '紀律.pdf')">持股分析進出紀律</button>
 </div>
 
 <div class="content-area">
-    <!-- 美股區域：使用官方小工具避開阻擋 -->
+    <!-- 美股區域：Widget 模式 -->
     <div id="us-pane" class="view-pane active">
         <div class="tradingview-widget-container" style="height: 100%; width: 100%;">
             <div class="tradingview-widget-container__widget" style="height: 100%; width: 100%;"></div>
             <script type="text/javascript" src="https://tradingview.com" async>
-            {
-              "dataSource": "Spx500",
-              "blockSize": "market_cap",
-              "blockColor": "change",
-              "locale": "zh_TW",
-              "colorTheme": "dark",
-              "width": "100%",
-              "height": "100%"
-            }
+            { "dataSource": "Spx500", "blockSize": "market_cap", "blockColor": "change", "locale": "zh_TW", "colorTheme": "dark", "width": "100%", "height": "100%" }
             </script>
         </div>
     </div>
 
-    <!-- 通用 iframe 區域 (台股與 PDF) -->
-    <iframe id="ifr-pane" class="view-pane" src=""></iframe>
+    <!-- 關鍵：加上 referrerpolicy 嘗試避開 Nstock 的來源檢查 -->
+    <iframe id="ifr-pane" class="view-pane" src="" referrerpolicy="no-referrer"></iframe>
 
-    <!-- 選股 CSV 專區 -->
     <div id="csv-pane" class="view-pane text-content">
-        <div id="csv-status" style="font-weight:bold; color:green; margin-bottom:10px;">準備載入中...</div>
+        <div id="csv-status" style="font-weight:bold; color:green; margin-bottom:10px;">等待載入...</div>
         <div id="csv-display" style="overflow-x: auto;"></div>
     </div>
 </div>
@@ -70,41 +59,36 @@
         document.getElementById(paneId).classList.add('active');
         
         if (paneId === 'ifr-pane') {
-            document.getElementById('ifr-pane').src = url;
+            const ifr = document.getElementById('ifr-pane');
+            ifr.src = "about:blank"; // 先清空防止跳轉
+            setTimeout(() => { ifr.src = url; }, 50);
         } else if (paneId === 'csv-pane') {
             autoLoadCSV();
         }
     }
 
     async function autoLoadCSV() {
-        const status = document.getElementById('csv-status');
         const display = document.getElementById('csv-display');
-        const possibleNames = ['stock.csv', 'stock.csv.csv'];
-
-        for (let name of possibleNames) {
-            try {
-                const response = await fetch(name + '?t=' + Date.now());
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        const content = e.target.result;
-                        const lines = content.split(/\r?\n/).filter(line => line.trim() !== "");
-                        let html = '<table class="stock-table">';
-                        lines.forEach((line, idx) => {
-                            const cols = line.split(',');
-                            html += '<tr>' + cols.map(c => (idx === 0) ? `<th>${c}</th>` : `<td>${c}</td>`).join('') + '</tr>';
-                        });
-                        html += '</table>';
-                        display.innerHTML = html;
-                        status.innerText = "✅ 成功載入：" + name;
-                    };
-                    reader.readAsText(blob, 'Big5');
-                    return; 
-                }
-            } catch (e) {}
-        }
-        status.innerText = "❌ 找不到 stock.csv。";
+        const status = document.getElementById('csv-status');
+        try {
+            const response = await fetch('stock.csv?t=' + Date.now());
+            if (response.ok) {
+                const blob = await response.blob();
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const lines = e.target.result.split(/\r?\n/).filter(l => l.trim() !== "");
+                    let html = '<table class="stock-table">';
+                    lines.forEach((line, i) => {
+                        const cols = line.split(',');
+                        html += '<tr>' + cols.map(c => i===0 ? `<th>${c}</th>` : `<td>${c}</td>`).join('') + '</tr>';
+                    });
+                    html += '</table>';
+                    display.innerHTML = html;
+                    status.innerText = "✅ 成功載入 stock.csv";
+                };
+                reader.readAsText(blob, 'Big5');
+            }
+        } catch (e) { status.innerText = "❌ 找不到 CSV。"; }
     }
 </script>
 
