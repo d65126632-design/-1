@@ -10,13 +10,11 @@
         body { font-family: "Microsoft JhengHei", sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; height: 100vh; overflow: hidden; }
         .sidebar { width: 250px; background: var(--sidebar-bg); padding: 20px 10px; border-right: 2px solid #45a29e; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
         .nav-btn { min-height: 50px; padding: 10px; background: #333; border: 1px solid #45a29e; color: #fff; border-radius: 4px; cursor: pointer; transition: 0.2s; font-size: 1rem; text-align: center; }
-        .nav-btn:hover { border-color: var(--active-blue); color: var(--active-blue); }
         .nav-btn.active { background-color: var(--active-blue) !important; color: #000 !important; font-weight: bold; }
         .content-area { flex: 1; position: relative; background: #131722; height: 100vh; }
         .view-pane { display: none; width: 100%; height: 100%; border: none; overflow: auto; }
         .view-pane.active { display: block; }
         .text-content { padding: 20px; color: #333; background: #f4f4f4; height: 100%; box-sizing: border-box; }
-        .csv-toolbar { background: #e0e0e0; padding: 12px; border-radius: 5px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #ccc; }
         .stock-table { width: 100%; border-collapse: collapse; background: white; color: #000; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .stock-table th, .stock-table td { border: 1px solid #aaa; padding: 10px; text-align: center; white-space: nowrap; }
         .stock-table th { background-color: #444; color: #fff; position: sticky; top: 0; }
@@ -34,7 +32,7 @@
 </div>
 
 <div class="content-area">
-    <!-- 美股區域：改用官方 Widget 避開 iframe 阻擋 -->
+    <!-- 美股區域：修正為官方小工具語法 -->
     <div id="us-pane" class="view-pane active">
         <div class="tradingview-widget-container" style="height: 100%; width: 100%;">
             <div class="tradingview-widget-container__widget" style="height: 100%; width: 100%;"></div>
@@ -44,7 +42,12 @@
               "blockSize": "market_cap",
               "blockColor": "change",
               "locale": "zh_TW",
+              "symbolUrl": "",
               "colorTheme": "dark",
+              "hasTopBar": false,
+              "isDataSetEnabled": false,
+              "isZoomEnabled": true,
+              "hasSymbolTooltip": true,
               "width": "100%",
               "height": "100%"
             }
@@ -52,17 +55,12 @@
         </div>
     </div>
 
-    <!-- 通用 iframe (PDF等) -->
+    <!-- 通用顯示區 -->
     <iframe id="ifr-pane" class="view-pane" src=""></iframe>
 
-    <!-- 選股 CSV 專區 -->
+    <!-- CSV 專區 -->
     <div id="csv-pane" class="view-pane text-content">
-        <div class="csv-toolbar">
-            <div id="csv-status" style="font-weight:bold; color:#666;">等待讀取 stock.csv...</div>
-            <div style="color: #333; font-size: 0.9rem;">
-                手動更新：<input type="file" id="file-manual" accept=".csv">
-            </div>
-        </div>
+        <div id="csv-status" style="font-weight:bold; color:green; margin-bottom:10px;">準備載入中...</div>
         <div id="csv-display" style="overflow-x: auto;"></div>
     </div>
 </div>
@@ -80,53 +78,40 @@
         }
     }
 
-    // 解決 Nstock 阻擋的唯一方案：新分頁開啟
     function openTw(url) {
         window.open(url, '_blank');
     }
 
     async function autoLoadCSV() {
         const status = document.getElementById('csv-status');
-        // 增加針對 GitHub 檔案路徑的檢查
+        const display = document.getElementById('csv-display');
         const possibleNames = ['stock.csv', 'stock.csv.csv'];
+
         for (let name of possibleNames) {
             try {
                 const response = await fetch(name + '?t=' + Date.now());
                 if (response.ok) {
                     const blob = await response.blob();
-                    processFile(blob, name);
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const content = e.target.result;
+                        const lines = content.split(/\r?\n/).filter(line => line.trim() !== "");
+                        let html = '<table class="stock-table">';
+                        lines.forEach((line, idx) => {
+                            const cols = line.split(',');
+                            html += '<tr>' + cols.map(c => (idx === 0) ? `<th>${c}</th>` : `<td>${c}</td>`).join('') + '</tr>';
+                        });
+                        html += '</table>';
+                        display.innerHTML = html;
+                        status.innerText = "✅ 成功載入：" + name;
+                    };
+                    reader.readAsText(blob, 'Big5');
                     return; 
                 }
-            } catch (e) { console.error("抓取失敗:", name); }
+            } catch (e) {}
         }
-        status.innerText = "❌ 找不到檔案。請確認 stock.csv 已上傳至 GitHub。";
+        status.innerText = "❌ 找不到 stock.csv。";
     }
-
-    function processFile(blob, filename) {
-        const status = document.getElementById('csv-status');
-        const display = document.getElementById('csv-display');
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const content = e.target.result;
-            if (content.includes(',') || content.includes('\n')) {
-                const lines = content.split(/\r?\n/).filter(line => line.trim() !== "");
-                let html = '<table class="stock-table">';
-                lines.forEach((line, idx) => {
-                    const cols = line.split(',');
-                    html += '<tr>' + cols.map(c => (idx === 0) ? `<th>${c}</th>` : `<td>${c}</td>`).join('') + '</tr>';
-                });
-                html += '</table>';
-                display.innerHTML = html;
-                status.innerText = "✅ 成功載入：" + filename;
-                status.style.color = "green";
-            }
-        };
-        reader.readAsText(blob, 'Big5');
-    }
-
-    document.getElementById('file-manual').addEventListener('change', function(e) {
-        if (this.files && this.files[0]) processFile(this.files[0], this.files[0].name);
-    });
 </script>
 
 </body>
